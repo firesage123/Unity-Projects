@@ -114,41 +114,36 @@ public class PlayerControl : MonoBehaviour {
     }
     
     internal void FixedUpdate() {
-        if (Mathf.Abs(roll) < RollRange)
-            roll = Mathf.Lerp(roll, roll+Input.GetAxis("Horizontal"), 0.01f); 
-        if (Mathf.Abs(pitch) < PitchRange)
-            pitch = Mathf.Lerp(pitch, pitch+Input.GetAxis("Vertical"), 0.01f);
+        var nroll = Mathf.Clamp(Input.GetAxis("Horizontal")*RollRange, -RollRange, RollRange);
+        var npitch = Mathf.Clamp(Input.GetAxis("Vertical")*PitchRange, -PitchRange, PitchRange);
+        roll = Mathf.Lerp(roll, nroll, 0.01f); 
+        pitch = Mathf.Lerp(pitch, npitch, 0.01f);
+        
         yaw += roll * RotationalSpeed * Time.fixedDeltaTime;
         
         Quaternion new_rotation = Quaternion.identity;
-        
-        new_rotation *= Quaternion.Euler(transform.up * pitch); //playerRB.transform.up * pitch);
-        new_rotation *= Quaternion.Euler(transform.right * roll); //playerRB.transform.right * roll);
-        new_rotation *= Quaternion.Euler(transform.forward * yaw); //playerRB.transform.forward * yaw);
+        new_rotation *= Quaternion.Euler(pitch, yaw, roll);
         playerRB.MoveRotation(new_rotation);
         
         // Thrust
-        thrust = Input.GetAxis("Thrust");
-        if (thrust < 0)
-            thrust = 0;
-        if (thrust >= 0 && thrust <= MaximumThrust)
-            playerRB.AddForce(transform.forward*thrust);
+        thrust = Mathf.Clamp(Input.GetAxis("Thrust")*MaximumThrust, 0f, MaximumThrust);
+        playerRB.AddForce(transform.forward*thrust);
         
         // Updrafts
         Vector3 vrel;
         bool inUp = false;
         Object[] updrafts = FindObjectsOfType(typeof(Updraft));
         for (int i = 0; i < updrafts.Length; i++)
-            if (Physics.OverlapSphere(Vector3.zero,0.5f,LayerMask.GetMask("Updrafts")).Length != 0)
+            if (Physics.OverlapSphere(playerRB.velocity,0.5f,LayerMask.GetMask("Updrafts")).Length != 0)
                 inUp = true;
         
         if (inUp)
             vrel = ((Updraft)updrafts[0]).WindVelocity - playerRB.velocity;
         else
-            vrel = Vector3.Project(playerRB.velocity, transform.up);
+            vrel = -playerRB.velocity;
         
         // Lift
-        float vf = Vector3.Dot(vrel, -transform.forward);
+        float vf = Vector3.Dot(vrel, transform.forward);
         Vector3 liftForce = LiftCoefficient*vf*vf*transform.up; 
         playerRB.AddForce(liftForce);
         
@@ -161,13 +156,13 @@ public class PlayerControl : MonoBehaviour {
         playerRB.AddForce(vDrag);
     }
     
-    internal void OnCollisionEnter2D(Collision2D collision) {
+    internal void OnCollisionEnter(Collision collision) {
         var landing = collision.gameObject.GetComponent<LandingPlatform>();
+        bool landed = false;
         if (landing != null) {
-            bool landed = true;
-            if (playerRB.velocity.magnitude > landing.MaxLandingSpeed)
-                landed = false;
-            OnGameOver(landed);
+            if (playerRB.velocity.magnitude <= landing.MaxLandingSpeed)
+                landed = true;
         }
+        OnGameOver(landed);
     }
 }
